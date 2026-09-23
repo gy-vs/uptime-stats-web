@@ -184,33 +184,7 @@ export default {
                 this.heartbeatList = null;
                 this.$root.storage()["chart-period"] = newPeriod;
             } else {
-                this.loading = true;
-
-                let period;
-                try {
-                    period = parseInt(newPeriod);
-                } catch (e) {
-                    // Invalid period
-                    period = 24;
-                }
-
-                this.$root.getMonitorChartData(this.monitorId, period, (res) => {
-                    if (!res.ok) {
-                        this.$root.toastError(res.msg);
-                    } else {
-                        this.chartRawData = res.data;
-                        this.$root.storage()["chart-period"] = newPeriod;
-                    }
-                    this.loading = false;
-                });
-
-                this.chartDataFetchInterval = setInterval(() => {
-                    this.$root.getMonitorChartData(this.monitorId, period, (res) => {
-                        if (res.ok) {
-                            this.chartRawData = res.data;
-                        }
-                    });
-                }, 5 * 60 * 1000);
+                this.fetchChartData(parseInt(newPeriod));
             }
         }
     },
@@ -227,12 +201,87 @@ export default {
             this.chartPeriodHrs = "0";
         }
     },
+    mounted() {
+        // Refetch the chart when the heartbeats/statistics have been cleared
+        this.$root.emitter.on("heartbeatsCleared", this.onHeartbeatsCleared);
+        this.$root.emitter.on("statisticsCleared", this.onStatisticsCleared);
+    },
     beforeUnmount() {
         if (this.chartDataFetchInterval) {
             clearInterval(this.chartDataFetchInterval);
         }
+        this.$root.emitter.off("heartbeatsCleared", this.onHeartbeatsCleared);
+        this.$root.emitter.off("statisticsCleared", this.onStatisticsCleared);
     },
     methods: {
+        /**
+         * Fetch chart data for the given period and keep refreshing it
+         * @param {number} period Time period in hours
+         * @returns {void}
+         */
+        fetchChartData(period) {
+            this.loading = true;
+
+            if (this.chartDataFetchInterval) {
+                clearInterval(this.chartDataFetchInterval);
+                this.chartDataFetchInterval = null;
+            }
+
+            if (isNaN(period)) {
+                period = 24;
+            }
+
+            this.$root.getMonitorChartData(this.monitorId, period, (res) => {
+                if (!res.ok) {
+                    this.$root.toastError(res.msg);
+                } else {
+                    this.chartRawData = res.data;
+                    this.$root.storage()["chart-period"] = String(period);
+                }
+                this.loading = false;
+            });
+
+            this.chartDataFetchInterval = setInterval(() => {
+                this.$root.getMonitorChartData(this.monitorId, period, (res) => {
+                    if (res.ok) {
+                        this.chartRawData = res.data;
+                    }
+                });
+            }, 5 * 60 * 1000);
+        },
+
+        /**
+         * Heartbeats of a monitor were cleared, refetch this chart if it belongs to that monitor
+         * @param {number} monitorID ID of the cleared monitor
+         * @returns {void}
+         */
+        onHeartbeatsCleared(monitorID) {
+            if (Number(monitorID) === this.monitorId) {
+                this.refreshAfterClear();
+            }
+        },
+
+        /**
+         * Statistics of all monitors were cleared, refetch this chart
+         * @returns {void}
+         */
+        onStatisticsCleared() {
+            this.refreshAfterClear();
+        },
+
+        /**
+         * Drop the cached data points and reload them from the server
+         * @returns {void}
+         */
+        refreshAfterClear() {
+            this.chartRawData = null;
+
+            // eslint-disable-next-line eqeqeq
+            if (this.chartPeriodHrs != "0") {
+                this.fetchChartData(parseInt(this.chartPeriodHrs));
+            }
+        },
+
         // Get color of bar chart for this datapoint
         getBarColorForDatapoint(datapoint) {
             if (datapoint.maintenance != null) {

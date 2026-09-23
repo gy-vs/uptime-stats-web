@@ -88,6 +88,7 @@ const app = server.app;
 log.debug("server", "Importing Monitor");
 const Monitor = require("./model/monitor");
 const User = require("./model/user");
+const { UptimeCalculator } = require("./uptime-calculator");
 
 log.debug("server", "Importing Settings");
 const { getSettings, setSettings, setting, initJWTSecret, checkLogin, doubleCheckPassword, shake256, SHAKE256_LENGTH, allowDevAllOrigin,
@@ -1594,8 +1595,14 @@ let needSetup = false;
                 await R.exec("DELETE FROM heartbeat WHERE monitor_id = ?", [
                     monitorID
                 ]);
+                await UptimeCalculator.clearData(monitorID);
+
+                // Reset the uptime calculator, so that the uptime and average
+                // ping are recalculated from the remaining (empty) data
+                await UptimeCalculator.remove(monitorID);
 
                 await sendHeartbeatList(socket, monitorID, true, true);
+                await Monitor.sendStats(io, monitorID, socket.userID);
 
                 callback({
                     ok: true,
@@ -1616,13 +1623,23 @@ let needSetup = false;
                 log.info("manage", `Clear Statistics User ID: ${socket.userID}`);
 
                 await R.exec("DELETE FROM heartbeat");
-                await R.exec("DELETE FROM stat_daily");
-                await R.exec("DELETE FROM stat_hourly");
-                await R.exec("DELETE FROM stat_minutely");
+                await UptimeCalculator.clearAllData();
+
+                // Reset all uptime calculators, so that the uptime and average
+                // ping are recalculated from the remaining (empty) data
+                for (let monitorID of Object.keys(UptimeCalculator.list)) {
+                    await UptimeCalculator.remove(monitorID);
+                }
 
                 // Restart all monitors to reset the stats
                 for (let monitorID in server.monitorList) {
                     await restartMonitor(socket.userID, monitorID);
+                }
+
+                // Send the recalculated (empty) stats immediately, otherwise
+                // e.g. push monitors would keep the old numbers until the next push
+                for (let monitorID in server.monitorList) {
+                    await Monitor.sendStats(io, monitorID, socket.userID);
                 }
 
                 callback({

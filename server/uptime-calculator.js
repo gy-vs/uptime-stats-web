@@ -91,6 +91,33 @@ class UptimeCalculator {
     }
 
     /**
+     * Delete all aggregated uptime statistics of a monitor from the database
+     * @param {number} monitorID the id of the monitor
+     * @returns {Promise<void>}
+     */
+    static async clearData(monitorID) {
+        await R.exec("DELETE FROM stat_daily WHERE monitor_id = ?", [
+            monitorID,
+        ]);
+        await R.exec("DELETE FROM stat_hourly WHERE monitor_id = ?", [
+            monitorID,
+        ]);
+        await R.exec("DELETE FROM stat_minutely WHERE monitor_id = ?", [
+            monitorID,
+        ]);
+    }
+
+    /**
+     * Delete all aggregated uptime statistics from the database
+     * @returns {Promise<void>}
+     */
+    static async clearAllData() {
+        await R.exec("DELETE FROM stat_daily");
+        await R.exec("DELETE FROM stat_hourly");
+        await R.exec("DELETE FROM stat_minutely");
+    }
+
+    /**
      *
      */
     constructor() {

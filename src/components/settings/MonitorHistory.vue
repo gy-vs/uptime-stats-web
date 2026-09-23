@@ -144,7 +144,12 @@ export default {
         clearStatistics() {
             this.$root.clearStatistics((res) => {
                 if (res.ok) {
-                    this.$router.go();
+                    // Clear the cached heartbeat list, uptime and average ping.
+                    // The server pushes the recalculated stats immediately.
+                    this.$root.heartbeatList = {};
+                    this.$root.avgPingList = {};
+                    this.$root.uptimeList = {};
+                    this.$root.emitter.emit("statisticsCleared");
                 } else {
                     this.$root.toastError(res.msg);
                 }
