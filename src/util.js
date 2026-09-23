@@ -227,11 +227,7 @@ class Logger {
         this.log(module, "debug", ...msg);
     }
     exception(module, exception, ...msg) {
-        let finalMessage = exception;
-        if (msg) {
-            finalMessage = `${msg}: ${exception}`;
-        }
-        this.log(module, "error", finalMessage);
+        this.log(module, "error", ...msg, exception);
     }
 }
 exports.log = new Logger();

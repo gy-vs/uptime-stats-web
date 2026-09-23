@@ -817,7 +817,9 @@ export default {
          */
         clearHeartbeats() {
             this.$root.clearHeartbeats(this.monitor.id, (res) => {
-                if (!res.ok) {
+                if (res.ok) {
+                    this.getImportantHeartbeatListLength();
+                } else {
                     toast.error(res.msg);
                 }
             });

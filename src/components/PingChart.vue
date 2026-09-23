@@ -184,33 +184,7 @@ export default {
                 this.heartbeatList = null;
                 this.$root.storage()["chart-period"] = newPeriod;
             } else {
-                this.loading = true;
-
-                let period;
-                try {
-                    period = parseInt(newPeriod);
-                } catch (e) {
-                    // Invalid period
-                    period = 24;
-                }
-
-                this.$root.getMonitorChartData(this.monitorId, period, (res) => {
-                    if (!res.ok) {
-                        this.$root.toastError(res.msg);
-                    } else {
-                        this.chartRawData = res.data;
-                        this.$root.storage()["chart-period"] = newPeriod;
-                    }
-                    this.loading = false;
-                });
-
-                this.chartDataFetchInterval = setInterval(() => {
-                    this.$root.getMonitorChartData(this.monitorId, period, (res) => {
-                        if (res.ok) {
-                            this.chartRawData = res.data;
-                        }
-                    });
-                }, 5 * 60 * 1000);
+                this.loadChartData(newPeriod);
             }
         }
     },
@@ -227,12 +201,74 @@ export default {
             this.chartPeriodHrs = "0";
         }
     },
+    mounted() {
+        this.$root.emitter.on("heartbeatsCleared", this.onHeartbeatsCleared);
+    },
     beforeUnmount() {
         if (this.chartDataFetchInterval) {
             clearInterval(this.chartDataFetchInterval);
         }
+
+        this.$root.emitter.off("heartbeatsCleared", this.onHeartbeatsCleared);
     },
     methods: {
+        /**
+         * Fetch the stats based chart data and keep it refreshed periodically.
+         * The recent ("0") period is rendered from the heartbeat list, so it is
+         * updated reactively and does not need to be fetched here.
+         * @param {string} newPeriod Newly selected chart period in hours
+         * @returns {void}
+         */
+        loadChartData(newPeriod) {
+            this.loading = true;
+
+            let period;
+            try {
+                period = parseInt(newPeriod);
+            } catch (e) {
+                // Invalid period
+                period = 24;
+            }
+
+            this.$root.getMonitorChartData(this.monitorId, period, (res) => {
+                if (!res.ok) {
+                    this.$root.toastError(res.msg);
+                } else {
+                    this.chartRawData = res.data;
+                    this.$root.storage()["chart-period"] = newPeriod;
+                }
+                this.loading = false;
+            });
+
+            this.chartDataFetchInterval = setInterval(() => {
+                this.$root.getMonitorChartData(this.monitorId, period, (res) => {
+                    if (res.ok) {
+                        this.chartRawData = res.data;
+                    }
+                });
+            }, 5 * 60 * 1000);
+        },
+
+        /**
+         * Refetch the chart data when heartbeats/stats were cleared.
+         * @param {number} clearedMonitorID ID of the cleared monitor, undefined if all monitors were cleared
+         * @returns {void}
+         */
+        onHeartbeatsCleared(clearedMonitorID) {
+            if (clearedMonitorID !== undefined && clearedMonitorID !== this.monitorId) {
+                return;
+            }
+
+            // The recent period uses the heartbeat list, which is already reset.
+            if (this.chartPeriodHrs !== "0") {
+                if (this.chartDataFetchInterval) {
+                    clearInterval(this.chartDataFetchInterval);
+                    this.chartDataFetchInterval = null;
+                }
+
+                this.loadChartData(this.chartPeriodHrs);
+            }
+        },
         // Get color of bar chart for this datapoint
         getBarColorForDatapoint(datapoint) {
             if (datapoint.maintenance != null) {

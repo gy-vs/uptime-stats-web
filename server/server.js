@@ -152,6 +152,7 @@ const { resetChrome } = require("./monitor-types/real-browser-monitor-type");
 const { EmbeddedMariaDB } = require("./embedded-mariadb");
 const { SetupDatabase } = require("./setup-database");
 const { chartSocketHandler } = require("./socket-handlers/chart-socket-handler");
+const { clearMonitorData, clearAllMonitorData } = require("./stats");
 
 app.use(express.json());
 
@@ -1591,11 +1592,13 @@ let needSetup = false;
 
                 log.info("manage", `Clear Heartbeats Monitor: ${monitorID} User ID: ${socket.userID}`);
 
-                await R.exec("DELETE FROM heartbeat WHERE monitor_id = ?", [
-                    monitorID
-                ]);
+                await clearMonitorData(monitorID);
 
+                // Send the now empty heartbeat list and recalculated stats to all
+                // browsers of this user immediately, so no manual refresh is needed.
                 await sendHeartbeatList(socket, monitorID, true, true);
+                await Monitor.sendStats(io, monitorID, socket.userID);
+                io.to(socket.userID).emit("heartbeatsCleared", monitorID);
 
                 callback({
                     ok: true,
@@ -1615,15 +1618,18 @@ let needSetup = false;
 
                 log.info("manage", `Clear Statistics User ID: ${socket.userID}`);
 
-                await R.exec("DELETE FROM heartbeat");
-                await R.exec("DELETE FROM stat_daily");
-                await R.exec("DELETE FROM stat_hourly");
-                await R.exec("DELETE FROM stat_minutely");
+                await clearAllMonitorData();
 
-                // Restart all monitors to reset the stats
-                for (let monitorID in server.monitorList) {
-                    await restartMonitor(socket.userID, monitorID);
+                // Push the empty heartbeat lists and the reset stats to all
+                // connected browsers. Monitor settings (including the
+                // active/paused state) are not touched.
+                let monitors = await R.getAll("SELECT id, user_id FROM monitor");
+                for (let monitor of monitors) {
+                    io.to(monitor.user_id).emit("heartbeatList", monitor.id, [], true);
+                    await Monitor.sendStats(io, monitor.id, monitor.user_id);
                 }
+
+                io.emit("heartbeatsCleared");
 
                 callback({
                     ok: true,

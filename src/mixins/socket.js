@@ -238,6 +238,12 @@ export default {
                 }
             });
 
+            // Heartbeats and stats were cleared on the server.
+            // monitorID is omitted when statistics of all monitors were cleared.
+            socket.on("heartbeatsCleared", (monitorID) => {
+                this.emitter.emit("heartbeatsCleared", monitorID);
+            });
+
             socket.on("avgPing", (monitorID, data) => {
                 this.avgPingList[monitorID] = data;
             });
